@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f5f8fb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Schul-Dashboard">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon.svg">
+  <title>Konstantins Schul-Dashboard</title>
+
+  <style>
+    :root {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #17324a;
+      background: #f5f8fb;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #f5f8fb;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: rgba(255,255,255,.96);
+      border-bottom: 1px solid #dce5ed;
+      padding: 18px 20px 14px;
+    }
+
+    h1 {
+      margin: 2px 0 4px;
+      font-size: 26px;
+    }
+
+    .eyebrow {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .10em;
+      color: #6f8598;
+    }
+
+    .sub {
+      color: #6f8598;
+      font-size: 14px;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .chip {
+      background: #eef4f8;
+      border: 1px solid #d9e4ec;
+      border-radius: 12px;
+      padding: 9px 12px;
+      font-size: 14px;
+      font-weight: 750;
+    }
+
+    main {
+      max-width: 900px;
+      margin: auto;
+      padding: 16px;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 11px;
+      padding: 10px 14px;
+      font-weight: 750;
+      background: #dfeef6;
+      color: #24475f;
+    }
+
+    .task {
+      background: white;
+      border: 1px solid #dbe5ed;
+      border-left: 5px solid #7ba7c9;
+      border-radius: 14px;
+      padding: 14px;
+      margin: 10px 0;
+      box-shadow: 0 1px 3px #0000000a;
+    }
+
+    .task.exam {
+      border-left-color: #d0a04e;
+    }
+
+    .task.done {
+      opacity: .60;
+      border-left-color: #65aa83;
+    }
+
+    .subject {
+      color: #536f85;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .title {
+      font-size: 19px;
+      font-weight: 800;
+      margin-top: 5px;
+    }
+
+    .due {
+      margin-top: 6px;
+      font-size: 14px;
+      color: #637b8e;
+      font-weight: 650;
+    }
+
+    .source {
+      margin-top: 7px;
+      font-size: 12px;
+      color: #8798a6;
+    }
+
+    .empty, .error, .setup {
+      background: white;
+      border: 1px solid #dbe5ed;
+      border-radius: 14px;
+      padding: 24px;
+      text-align: center;
+      color: #637b8e;
+    }
+
+    .setup input {
+      width: 100%;
+      margin: 14px 0 10px;
+      padding: 12px;
+      border: 1px solid #ccd9e2;
+      border-radius: 10px;
+      font-size: 16px;
+    }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(19,43,61,.40);
+      z-index: 20;
+      padding: 20px;
+    }
+
+    .popup {
+      width: min(540px, 100%);
+      background: white;
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 18px 50px #0003;
+    }
+
+    .popup h2 {
+      margin-top: 0;
+      font-size: 25px;
+    }
+
+    .popup .big {
+      font-size: 18px;
+      line-height: 1.55;
+      margin: 16px 0 20px;
+    }
+  </style>
+</head>
+
+<body>
+<header>
+  <div class="eyebrow">SCHULE IM BLICK</div>
+  <h1>Konstantins Schul-Dashboard</h1>
+  <div class="sub" id="updated">Wird geladen ...</div>
+
+  <div class="chips">
+    <div class="chip" id="openCount">- offen</div>
+    <div class="chip" id="examCount">- Pruefungen</div>
+    <div class="chip" id="todayCount">- heute</div>
+  </div>
+</header>
+
+<main>
+  <div class="toolbar">
+    <button onclick="loadDashboard()">Aktualisieren</button>
+  </div>
+
+  <div id="content"></div>
+</main>
+
+<div class="overlay" id="dailyOverlay">
+  <div class="popup">
+    <div class="eyebrow">DEIN TAG</div>
+    <h2>Guten Morgen, Konstantin!</h2>
+    <div class="big" id="dailyText"></div>
+    <button onclick="closeDailyPopup()">Alles klar</button>
+  </div>
+</div>
+
+<script>
+const AAD = new TextEncoder().encode("family-dashboard-relay:v1");
+const KEY_STORAGE = "schoolDashboardRelayKey";
+const POPUP_STORAGE = "schoolDashboardLastDailyPopup";
+
+function b64urlDecode(value) {
+  value = value.replace(/-/g, "+").replace(/_/g, "/");
+  while (value.length % 4) value += "=";
+  const raw = atob(value);
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+
+function extractAndStoreKey() {
+  const hash = new URLSearchParams(location.hash.slice(1));
+  const supplied = hash.get("key");
+
+  if (supplied) {
+    localStorage.setItem(KEY_STORAGE, supplied);
+    history.replaceState(null, "", location.pathname + location.search);
+    return supplied;
+  }
+
+  return localStorage.getItem(KEY_STORAGE) || "";
+}
+
+async function decryptEnvelope(envelope, keyText) {
+  const keyBytes = b64urlDecode(keyText);
+
+  if (keyBytes.length !== 32) {
+    throw new Error("Der gespeicherte Zugangsschluessel ist ungueltig.");
+  }
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    keyBytes,
+    { name: "AES-GCM" },
+    false,
+    ["decrypt"]
+  );
+
+  const plain = await crypto.subtle.decrypt(
+    {
+      name: "AES-GCM",
+      iv: b64urlDecode(envelope.nonce),
+      additionalData: AAD,
+      tagLength: 128
+    },
+    key,
+    b64urlDecode(envelope.ciphertext)
+  );
+
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+
+function localDateKey() {
+  const d = new Date();
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, "0"),
+    String(d.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
+function isToday(value) {
+  if (!value) return false;
+
+  const d = new Date(value);
+  const now = new Date();
+
+  return d.getFullYear() === now.getFullYear()
+    && d.getMonth() === now.getMonth()
+    && d.getDate() === now.getDate();
+}
+
+function formatDue(value) {
+  if (!value) return "";
+
+  const d = new Date(value);
+
+  if (Number.isNaN(d.getTime())) return value;
+
+  return d.toLocaleString("de-AT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function showDailyPopup(snapshot) {
+  const today = localDateKey();
+
+  if (localStorage.getItem(POPUP_STORAGE) === today) return;
+
+  const tasks = snapshot.tasks || [];
+  const open = tasks.filter(t => t.status === "open");
+  const todayTasks = open.filter(t => isToday(t.due));
+  const exams = open.filter(t => t.category === "exam");
+
+  let text = "Du hast " + open.length + " offene Aufgaben.";
+
+  if (todayTasks.length) {
+    text += " Davon sind " + todayTasks.length + " heute faellig.";
+  } else {
+    text += " Fuer heute ist aktuell nichts Neues faellig.";
+  }
+
+  if (exams.length) {
+    text += " Ausserdem sind " + exams.length + " Pruefungstermine eingetragen.";
+  }
+
+  document.getElementById("dailyText").textContent = text;
+  document.getElementById("dailyOverlay").style.display = "flex";
+  localStorage.setItem(POPUP_STORAGE, today);
+}
+
+function closeDailyPopup() {
+  document.getElementById("dailyOverlay").style.display = "none";
+}
+
+function render(snapshot) {
+  const tasks = snapshot.tasks || [];
+  const openTasks = tasks.filter(t => t.status === "open");
+  const exams = openTasks.filter(t => t.category === "exam");
+  const todayTasks = openTasks.filter(t => isToday(t.due));
+
+  document.getElementById("openCount").textContent =
+    openTasks.length + " offen";
+
+  document.getElementById("examCount").textContent =
+    exams.length + " Pruefungen";
+
+  document.getElementById("todayCount").textContent =
+    todayTasks.length + " heute";
+
+  const updated = snapshot.updated_at
+    ? new Date(snapshot.updated_at).toLocaleString("de-AT")
+    : "-";
+
+  document.getElementById("updated").textContent =
+    "Stand: " + updated;
+
+  const host = document.getElementById("content");
+  host.innerHTML = "";
+
+  if (!tasks.length) {
+    host.innerHTML =
+      '<div class="empty">Keine Aufgaben vorhanden.</div>';
+    return;
+  }
+
+  const sorted = [...tasks].sort((a, b) => {
+    if (a.status === "open" && b.status !== "open") return -1;
+    if (a.status !== "open" && b.status === "open") return 1;
+
+    const ad = a.due ? new Date(a.due).getTime() : Number.MAX_SAFE_INTEGER;
+    const bd = b.due ? new Date(b.due).getTime() : Number.MAX_SAFE_INTEGER;
+
+    return ad - bd;
+  });
+
+  for (const task of sorted) {
+    const div = document.createElement("div");
+
+    div.className =
+      "task " +
+      (task.category === "exam" ? "exam " : "") +
+      (task.status !== "open" ? "done" : "");
+
+    const subject = document.createElement("div");
+    subject.className = "subject";
+    subject.textContent = task.subject || "";
+
+    const title = document.createElement("div");
+    title.className = "title";
+    title.textContent = task.title || "";
+
+    div.appendChild(subject);
+    div.appendChild(title);
+
+    if (task.due) {
+      const due = document.createElement("div");
+      due.className = "due";
+      due.textContent =
+        (task.category === "exam" ? "Termin: " : "Faellig: ") +
+        formatDue(task.due);
+      div.appendChild(due);
+    }
+
+    if (task.source) {
+      const source = document.createElement("div");
+      source.className = "source";
+      source.textContent = "Quelle: " + task.source;
+      div.appendChild(source);
+    }
+
+    host.appendChild(div);
+  }
+
+  showDailyPopup(snapshot);
+}
+
+function showSetup() {
+  const host = document.getElementById("content");
+
+  host.innerHTML = `
+    <div class="setup">
+      <strong>Dashboard noch nicht eingerichtet.</strong>
+      <p>Bitte die sichere Dashboard-Adresse einmalig oeffnen.</p>
+      <input id="setupKey" placeholder="Relay-Schluessel">
+      <button onclick="saveSetupKey()">Speichern</button>
+    </div>
+  `;
+}
+
+function saveSetupKey() {
+  const input = document.getElementById("setupKey");
+  const value = input.value.trim();
+
+  if (!value) return;
+
+  localStorage.setItem(KEY_STORAGE, value);
+  loadDashboard();
+}
+
+async function loadDashboard() {
+  const keyText = extractAndStoreKey();
+
+  if (!keyText) {
+    showSetup();
+    return;
+  }
+
+  try {
+    const response = await fetch("./snapshot.enc?t=" + Date.now(), {
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      throw new Error("Snapshot nicht erreichbar (" + response.status + ").");
+    }
+
+    const envelope = await response.json();
+    const snapshot = await decryptEnvelope(envelope, keyText);
+
+    render(snapshot);
+  } catch (error) {
+    document.getElementById("content").innerHTML =
+      '<div class="error">Dashboard konnte nicht geladen werden: ' +
+      String(error.message || error) +
+      '</div>';
+  }
+}
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./service-worker.js");
+}
+
+loadDashboard();
+</script>
+</body>
+</html>
