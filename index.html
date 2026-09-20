@@ -456,7 +456,25 @@ async function loadDashboard() {
     }
 
     const envelope = await response.json();
-    const snapshot = await decryptEnvelope(envelope, keyText);
+
+    let snapshot;
+    try {
+      snapshot = await decryptEnvelope(envelope, keyText);
+    } catch (decryptError) {
+      localStorage.removeItem(KEY_STORAGE);
+      showSetup();
+
+      const setup = document.querySelector(".setup");
+      if (setup) {
+        const warning = document.createElement("p");
+        warning.className = "error";
+        warning.textContent =
+          "Der gespeicherte Zugangsschluessel ist nicht mehr gueltig. Bitte den aktuellen Relay-Schluessel einmalig eingeben.";
+        setup.prepend(warning);
+      }
+
+      return;
+    }
 
     render(snapshot);
   } catch (error) {
